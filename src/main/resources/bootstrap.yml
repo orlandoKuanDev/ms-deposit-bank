@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: service-deposit
+  cloud:
+    config:
+      uri: http://localhost:8090
