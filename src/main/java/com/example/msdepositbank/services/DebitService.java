@@ -1,5 +1,7 @@
 package com.example.msdepositbank.services;
 
+import com.example.msdepositbank.Exception.ArgumentWebClientNotValid;
+import com.example.msdepositbank.models.entities.Bill;
 import com.example.msdepositbank.models.entities.Debit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +42,23 @@ public class DebitService {
                     logTraceResponse(logger, response);
                     return Mono.error(new RuntimeException(
                             String.format("THE CARD NUMBER DONT EXIST IN MICRO SERVICE DEBIT -> %s", cardNumber)
+                    ));
+                })
+                .bodyToMono(Debit.class);
+    }
+
+    public Mono<Debit> findByAccountNumber(String accountNumber) {
+        return webClientBuilder
+                .baseUrl("http://SERVICE-DEBIT/debit")
+                .build()
+                .get()
+                .uri("/account/{accountNumber}", Collections.singletonMap("accountNumber", accountNumber))
+                .accept(APPLICATION_JSON)
+                .retrieve()
+                .onStatus(HttpStatus::isError, response -> {
+                    logTraceResponse(logger, response);
+                    return Mono.error(new ArgumentWebClientNotValid(
+                            String.format("THE ACCOUNT NUMBER DONT EXIST IN MICRO SERVICE DEBIT -> %s", accountNumber)
                     ));
                 })
                 .bodyToMono(Debit.class);
