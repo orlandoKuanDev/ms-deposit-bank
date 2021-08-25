@@ -9,4 +9,5 @@ public class CreateDepositWithCardDTO {
     private String cardNumber;
     private Double amount;
     private String description;
+    private String accountNumber;
 }

@@ -17,6 +17,7 @@ public class RouterConfig {
         return route(GET("/deposit"), handler::findAll)
                 .andRoute(GET("/deposit/{id}"), handler::findById)
                 .andRoute(GET("/deposit/acc/{accountNumber}"), handler::findByAccountNumber)
-                .andRoute(POST("/deposit/create"), handler::createDeposit);
+                .andRoute(POST("/deposit/create"), handler::createDeposit)
+                .andRoute(POST("/deposit/card/create"), handler::createDepositWithCardNumber);
     }
 }

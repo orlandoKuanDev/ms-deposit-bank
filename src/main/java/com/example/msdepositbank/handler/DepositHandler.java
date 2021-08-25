@@ -70,7 +70,7 @@ public class DepositHandler {
                     transaction.setDescription(result.getT1().getT1().getDescription());
                     List<Acquisition> acquisitions = result.getT2().getAssociations();
                     Acquisition acquisition = acquisitions.stream()
-                            .filter(acq-> acq.getBill().getBalance() > result.getT1().getT1().getAmount())
+                            .filter(acq-> Objects.equals(acq.getBill().getAccountNumber(), result.getT1().getT1().getAccountNumber()))
                             .findFirst()
                             .orElseThrow(() -> new RuntimeException("The retire amount exceeds the available balance in yours accounts"));
                     Bill bill = acquisition.getBill();
