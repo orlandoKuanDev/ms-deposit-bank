@@ -184,7 +184,7 @@ public class DepositHandler {
                                 .contentType(APPLICATION_JSON)
                                 .bodyValue(depositCreate))
                 .log()
-                .onErrorResume(e -> Mono.error(new RuntimeException(e.getMessage())));;
+                .onErrorResume(e -> Mono.error(new RuntimeException(e.getMessage())));
     /*    return createDepositDTO
                 .as(this::createTransactionUpdateDebitWithCard)
                 .flatMap(depositCreate ->
