@@ -174,14 +174,13 @@ public class DepositHandler {
                 .defaultIfEmpty(new Debit());
         log.info("EXIST {}", debitCard);
         return Mono.zip(createDepositDTO, debitCard)
-                .flatMapMany(debit -> {
+                .flatMap(debit -> {
             return Mono.just(debit.getT1()).as(this::createTransactionUpdateDebitWithCard);
         }).switchIfEmpty(Mono.defer(() -> {
             return createDepositDTO.as(this::createTransactionCardLess);
         }))
-                .collectList()
                 .flatMap(depositCreate ->
-                        ServerResponse.ok()
+                        ServerResponse.created(URI.create("/deposit/".concat(depositCreate.getId())))
                                 .contentType(APPLICATION_JSON)
                                 .bodyValue(depositCreate))
                 .log()
