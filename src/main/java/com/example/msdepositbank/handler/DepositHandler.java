@@ -12,13 +12,16 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.context.Context;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -117,25 +120,25 @@ public class DepositHandler {
                 .onErrorResume(e -> Mono.error(new RuntimeException(e.getMessage())));
     }
 
-    private Mono<Deposit> createTransactionUpdateDebitWithCard(Mono<CreateDepositWithCardDTO> tuple) {
+    private Mono<Deposit> createTransactionUpdateDebitWithCard(Mono<Tuple2<CreateDepositWithCardDTO, Debit>> tuple) {
         return tuple
                 //.zipWhen(depositRequest ->  debitService.findByAccountNumber(depositRequest.getAccountNumber()))
                 .zipWhen(data -> {
-                    data.setCardNumber(data.getCardNumber());
-                    return debitService.findByCardNumber(data.getCardNumber());
+                    data.getT1().setCardNumber(data.getT2().getCardNumber());
+                    return debitService.findByCardNumber(data.getT1().getCardNumber());
                 })
                 .zipWhen(result -> {
             Transaction transaction = new Transaction();
             transaction.setTransactionType("DEPOSIT");
-            transaction.setTransactionAmount(result.getT1().getAmount());
-            transaction.setDescription(result.getT1().getDescription());
+            transaction.setTransactionAmount(result.getT1().getT1().getAmount());
+            transaction.setDescription(result.getT1().getT1().getDescription());
             List<Acquisition> acquisitions = result.getT2().getAssociations();
             Acquisition acquisition = acquisitions.stream()
-                    .filter(acq-> Objects.equals(acq.getBill().getAccountNumber(), result.getT1().getAccountNumber()))
+                    .filter(acq-> Objects.equals(acq.getBill().getAccountNumber(), result.getT1().getT1().getAccountNumber()))
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("The retire amount exceeds the available balance in yours accounts"));
             Bill bill = acquisition.getBill();
-            bill.setBalance(bill.getBalance() + result.getT1().getAmount());
+            bill.setBalance(bill.getBalance() + result.getT1().getT1().getAmount());
             transaction.setBill(bill);
             return transactionService.createTransaction(transaction);
         }).zipWhen(result -> {
@@ -159,7 +162,7 @@ public class DepositHandler {
             debit.setCardNumber(result.getT1().getT2().getCardNumber());
             return debitService.updateDebit(debit);
         }).flatMap(response -> {
-                    CreateDepositWithCardDTO depositWithCardDTO = response.getT1().getT1().getT1();
+                    CreateDepositWithCardDTO depositWithCardDTO = response.getT1().getT1().getT1().getT1();
                     Deposit deposit = new Deposit();
                     deposit.setAmount(depositWithCardDTO.getAmount());
                     deposit.setDescription(depositWithCardDTO.getDescription());
@@ -167,37 +170,13 @@ public class DepositHandler {
                     return depositService.create(deposit);
         });
     }
-    public Mono<ServerResponse> createDepositWithCard(ServerRequest request){
-        Mono<CreateDepositWithCardDTO> createDepositDTO = request.bodyToMono(CreateDepositWithCardDTO.class);
-
-        Mono<Debit> debitCard = createDepositDTO.flatMap(depositRequest -> debitService.findByAccountNumber(depositRequest.getAccountNumber()))
-                .defaultIfEmpty(new Debit());
-        log.info("EXIST {}", debitCard);
-        return Mono.zip(createDepositDTO, debitCard)
-                .flatMap(debit -> {
-            return Mono.just(debit.getT1()).as(this::createTransactionUpdateDebitWithCard);
-        }).switchIfEmpty(Mono.defer(() -> {
-            return createDepositDTO.as(this::createTransactionCardLess);
-        }))
-                .flatMap(depositCreate ->
-                        ServerResponse.created(URI.create("/deposit/".concat(depositCreate.getId())))
-                                .contentType(APPLICATION_JSON)
-                                .bodyValue(depositCreate))
-                .log()
-                .onErrorResume(e -> Mono.error(new RuntimeException(e.getMessage())));
-    /*    return createDepositDTO
-                .as(this::createTransactionUpdateDebitWithCard)
-                .flatMap(depositCreate ->
-                        ServerResponse.created(URI.create("/deposit/".concat(depositCreate.getId())))
-                                .contentType(APPLICATION_JSON)
-                                .bodyValue(depositCreate))
-                .log()
-                .onErrorResume(e -> Mono.error(new RuntimeException(e.getMessage())));*/
-    }
 
     private Mono<Deposit> createTransactionCardLess(Mono<CreateDepositWithCardDTO> tuple){
         return tuple
-                .zipWhen(depositRequest ->  billService.findByAccountNumber(depositRequest.getAccountNumber()))
+                .zipWhen(depositRequest ->  {
+                    log.info("ACCOUNT, {}", depositRequest.getAccountNumber());
+                    return billService.findByAccountNumber(depositRequest.getAccountNumber());
+                })
                 .zipWhen(result -> {
                     Transaction transaction = new Transaction();
                     transaction.setTransactionType("DEPOSIT");
@@ -214,6 +193,30 @@ public class DepositHandler {
                     deposit.setBill(response.getT2().getBill());
                     return depositService.create(deposit);
                 });
+    }
+
+    public Mono<ServerResponse> createDepositWithCard(ServerRequest request){
+        Mono<CreateDepositWithCardDTO> createDepositDTO = request.bodyToMono(CreateDepositWithCardDTO.class);
+        return createDepositDTO
+                .zipWhen(depositRequest -> {
+                    return debitService.findByAccountNumber(depositRequest.getAccountNumber())
+                            .switchIfEmpty(Mono.defer(() -> {
+                                        return Mono.just(new Debit());
+                            }));
+                })
+                .flatMap(data -> {
+                    if(data.getT2().getCardNumber() == null){
+                        return Mono.just(data.getT1()).as(this::createTransactionCardLess);
+                    }
+                    return Mono.just(Tuples.of(data.getT1(), data.getT2()))
+                            .as(this::createTransactionUpdateDebitWithCard);
+                })
+                .flatMap(depositCreate ->
+                        ServerResponse.ok()
+                                .contentType(APPLICATION_JSON)
+                                .bodyValue(depositCreate))
+                .log()
+                .onErrorResume(e -> Mono.error(new RuntimeException(e.getMessage())));
     }
 
     public Mono<ServerResponse> createDepositCardLess(ServerRequest request){
