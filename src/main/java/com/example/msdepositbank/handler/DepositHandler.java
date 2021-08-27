@@ -186,7 +186,8 @@ public class DepositHandler {
                     bill.setBalance(bill.getBalance() + result.getT1().getAmount());
                     transaction.setBill(bill);
                     return transactionService.createTransaction(transaction);
-                }).flatMap(response -> {
+                })
+                .flatMap(response -> {
                     Deposit deposit = new Deposit();
                     deposit.setAmount(response.getT1().getT1().getAmount());
                     deposit.setDescription(response.getT1().getT1().getDescription());
@@ -197,6 +198,7 @@ public class DepositHandler {
 
     public Mono<ServerResponse> createDepositWithCard(ServerRequest request){
         Mono<CreateDepositWithCardDTO> createDepositDTO = request.bodyToMono(CreateDepositWithCardDTO.class);
+
         return createDepositDTO
                 .zipWhen(depositRequest -> {
                     return debitService.findByAccountNumber(depositRequest.getAccountNumber())
