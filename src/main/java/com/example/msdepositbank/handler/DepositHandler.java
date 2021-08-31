@@ -195,24 +195,26 @@ public class DepositHandler {
                     return depositService.create(deposit);
                 });
     }
-
-    public Mono<ServerResponse> createDepositWithCard(ServerRequest request){
-        Mono<CreateDepositWithCardDTO> createDepositDTO = request.bodyToMono(CreateDepositWithCardDTO.class);
-
-        return createDepositDTO
+    public Mono<Deposit> createDeposit(Mono<CreateDepositWithCardDTO> deposit){
+        return deposit
                 .zipWhen(depositRequest -> {
-                    return debitService.findByAccountNumber(depositRequest.getAccountNumber())
-                            .switchIfEmpty(Mono.defer(() -> {
-                                        return Mono.just(new Debit());
-                            }));
-                })
+            return debitService.findByAccountNumber(depositRequest.getAccountNumber())
+                    .switchIfEmpty(Mono.defer(() -> {
+                        return Mono.just(new Debit());
+                    }));
+        })
                 .flatMap(data -> {
                     if(data.getT2().getCardNumber() == null){
                         return Mono.just(data.getT1()).as(this::createTransactionCardLess);
                     }
                     return Mono.just(Tuples.of(data.getT1(), data.getT2()))
                             .as(this::createTransactionUpdateDebitWithCard);
-                })
+                });
+    }
+    public Mono<ServerResponse> createDepositWithCard(ServerRequest request){
+        Mono<CreateDepositWithCardDTO> createDepositDTO = request.bodyToMono(CreateDepositWithCardDTO.class);
+        return createDepositDTO
+                .as(this::createDeposit)
                 .flatMap(depositCreate ->
                         ServerResponse.ok()
                                 .contentType(APPLICATION_JSON)
